@@ -204,7 +204,7 @@ dotnet run --project .\src\MSDentalSys.Web\MSDentalSys.Web.csproj
 
 La solución cuenta con pruebas para los módulos administrativos y clínicos, Login/autenticación, autorización HTTP e infraestructura.
 
-Estado actual: **187 pruebas correctas**, incluidas cinco comprobaciones de la fábrica sin SQL Server real.
+Estado actual: **196 pruebas correctas**, incluidas las comprobaciones de la fábrica y del bloqueo de Identity sin SQL Server real.
 
 Las pruebas de datos utilizan SQLite InMemory y no utilizan `MSDentalSysDB`. Las pruebas HTTP usan `WebApplicationFactory` en el entorno `Testing`, con una base SQLite aislada y un esquema de autenticación exclusivo para Tests.
 
@@ -213,6 +213,8 @@ dotnet test .\MSDentalSys.sln
 ```
 
 ## Seguridad
+
+ASP.NET Core Identity bloquea temporalmente la cuenta durante 60 segundos al alcanzar cinco intentos fallidos consecutivos de inicio de sesión. La política aplica a todos los usuarios internos (Administrador, Odontologo y Recepcionista) con `LockoutEnabled` habilitado. Un acceso correcto antes del límite reinicia el contador; durante el bloqueo se rechaza incluso la contraseña correcta. Las cuentas nuevas creadas mediante UserManager tienen el bloqueo habilitado; esta configuración no corrige cuentas históricas que lo tengan deshabilitado.
 
 - ASP.NET Core Identity gestiona usuarios y contraseñas.
 - La autorización se define mediante `[Authorize]` y roles.
