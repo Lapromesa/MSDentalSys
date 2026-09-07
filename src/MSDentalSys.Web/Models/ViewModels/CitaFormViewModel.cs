@@ -28,7 +28,6 @@ namespace MSDentalSys.Web.Models.ViewModels
         [Display(Name = "Observaciones")]
         public string? Observaciones { get; set; }
 
-        public IEnumerable<SelectListItem> Pacientes { get; set; } = [];
         public IEnumerable<SelectListItem> Odontologos { get; set; } = [];
         public IEnumerable<SelectListItem> Servicios { get; set; } = [];
     }

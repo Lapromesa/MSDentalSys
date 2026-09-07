@@ -395,7 +395,6 @@ namespace MSDentalSys.Web.Controllers
                 .AsNoTracking()
                 .ToListAsync();
 
-            model.Pacientes = [];
             model.PacienteNombre = model.PacienteId > 0
                 ? await _context.Pacientes
                     .Where(p => p.PacienteId == model.PacienteId && p.Estado)
