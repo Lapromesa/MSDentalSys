@@ -126,7 +126,7 @@ namespace MSDentalSys.Web.Controllers
             {
                 await _context.SaveChangesAsync();
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException exception) when (IsCedulaUniqueViolation(exception))
             {
                 ModelState.AddModelError(nameof(model.Cedula), "La cédula ya pertenece a otro paciente.");
                 await LoadSegurosAsync(model);
@@ -228,7 +228,7 @@ namespace MSDentalSys.Web.Controllers
             {
                 await _context.SaveChangesAsync();
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException exception) when (IsCedulaUniqueViolation(exception))
             {
                 ModelState.AddModelError(nameof(model.Cedula), "La cédula ya pertenece a otro paciente.");
                 await LoadSegurosAsync(model, paciente.SeguroId);
@@ -279,6 +279,18 @@ namespace MSDentalSys.Web.Controllers
 
         private async Task ValidateConditionalFieldsAsync(PacienteFormViewModel model, int? currentSeguroId = null)
         {
+            var cedula = NullIfWhiteSpace(model.Cedula);
+            if (cedula is not null && !System.Text.RegularExpressions.Regex.IsMatch(
+                cedula, @"\A(?:[0-9]{11}|[0-9]{3}-[0-9]{7}-[0-9])\z"))
+            {
+                ModelState.AddModelError(nameof(model.Cedula), "Ingresa una cédula completa de 11 dígitos con formato XXX-XXXXXXX-X.");
+            }
+            else
+            {
+                var digits = cedula?.Replace("-", "");
+                model.Cedula = digits is null ? null : $"{digits[..3]}-{digits[3..10]}-{digits[10]}";
+            }
+
             if (model.FechaNacimiento.HasValue && CalculateAge(model.FechaNacimiento.Value) >= 18 &&
                 string.IsNullOrWhiteSpace(model.Cedula))
             {
@@ -343,6 +355,15 @@ namespace MSDentalSys.Web.Controllers
             return age;
         }
 
+        private static bool IsCedulaUniqueViolation(DbUpdateException exception)
+        {
+            // Solo traducimos la infracción del índice de cédula; los demás errores se propagan.
+            return exception.InnerException is Microsoft.Data.SqlClient.SqlException sql &&
+                sql.Errors.Cast<Microsoft.Data.SqlClient.SqlError>().Any(error =>
+                    (error.Number == 2601 || error.Number == 2627) &&
+                    error.Message.Contains("IX_Pacientes_Cedula", StringComparison.Ordinal));
+        }
+
         private async Task<bool> CedulaExistsAsync(string? cedula, int? pacienteId)
         {
             var normalizedCedula = NullIfWhiteSpace(cedula);
@@ -353,7 +374,7 @@ namespace MSDentalSys.Web.Controllers
             }
 
             return await _context.Pacientes.AnyAsync(p =>
-                p.Cedula == normalizedCedula &&
+                (p.Cedula == normalizedCedula || p.Cedula == normalizedCedula.Replace("-", "")) &&
                 (!pacienteId.HasValue || p.PacienteId != pacienteId.Value));
         }
 

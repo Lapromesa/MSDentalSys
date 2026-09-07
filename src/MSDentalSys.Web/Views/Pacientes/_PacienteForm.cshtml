@@ -1,4 +1,4 @@
-@model MSDentalSys.Web.Models.ViewModels.PacienteFormViewModel
+﻿@model MSDentalSys.Web.Models.ViewModels.PacienteFormViewModel
 @{
     var formAction = ViewData["FormAction"]?.ToString() ?? "Create";
 }
@@ -33,9 +33,9 @@
                 <span asp-validation-for="Apellido" class="text-danger"></span>
             </div>
             <div class="col-md-4">
-                <label asp-for="Cedula" class="form-label"></label>
-                <input asp-for="Cedula" class="form-control" autocomplete="off" placeholder="Opcional" />
-                <small class="form-text text-muted">Obligatoria para pacientes de 18 a&ntilde;os o m&aacute;s.</small>
+                <label asp-for="Cedula" class="form-label"></label><span id="cedula-required" class="text-danger" aria-hidden="true" hidden> *</span>
+                <input asp-for="Cedula" type="text" inputmode="numeric" maxlength="13" class="form-control" autocomplete="off" placeholder="XXX-XXXXXXX-X" aria-required="false" aria-describedby="cedula-help" data-today="@DateTime.Today.ToString("yyyy-MM-dd")" />
+                <small id="cedula-help" class="form-text text-muted">Opcional. Obligatoria a partir de los 18 años.</small>
                 <span asp-validation-for="Cedula" class="text-danger"></span>
             </div>
             <div class="col-md-4">
@@ -184,34 +184,4 @@
     </div>
 </form>
 
-<script>
-    (() => {
-        const selector = document.getElementById('seguro-selector');
-        const seguro = document.getElementById('SeguroId');
-        const radios = document.querySelectorAll('input[name="TieneSeguro"]');
-        const sexo = document.getElementById('Sexo');
-        const embarazoField = document.getElementById('embarazo-field');
-        const embarazo = document.getElementById('Embarazo');
-
-        const updateSeguroVisibility = () => {
-            const tieneSeguro = document.getElementById('tiene-seguro-si')?.checked === true;
-            if (selector) selector.hidden = !tieneSeguro;
-            if (seguro) {
-                seguro.required = tieneSeguro;
-                if (!tieneSeguro) seguro.value = '';
-            }
-        };
-
-        radios.forEach(radio => radio.addEventListener('change', updateSeguroVisibility));
-        updateSeguroVisibility();
-
-        const updateEmbarazoVisibility = () => {
-            const esFemenino = sexo?.value === 'Femenino';
-            if (embarazoField) embarazoField.hidden = !esFemenino;
-            if (embarazo && !esFemenino) embarazo.value = '';
-        };
-
-        sexo?.addEventListener('change', updateEmbarazoVisibility);
-        updateEmbarazoVisibility();
-    })();
-</script>
+<script src="~/js/pacientes-form.js" asp-append-version="true" defer></script>

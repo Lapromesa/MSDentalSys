@@ -114,7 +114,8 @@ public class CitasControllerTests
 
         var view = Assert.IsType<ViewResult>(result);
         var model = Assert.IsType<CitaFormViewModel>(view.Model);
-        Assert.Empty(model.Pacientes);
+        Assert.Equal(0, model.PacienteId);
+        Assert.Null(model.PacienteNombre);
         Assert.Contains(model.Odontologos, item => item.Value == database.OdontologistId);
         Assert.Contains(model.Servicios, item => item.Value == database.ServiceId.ToString());
     }
@@ -126,6 +127,7 @@ public class CitasControllerTests
         await database.AddSupportDataAsync();
         var controller = database.CreateController();
         var model = database.CreateAppointmentModel(new DateTime(2030, 2, 1, 9, 0, 0));
+        model.PacienteNombre = "Nombre incorrecto";
         controller.ModelState.AddModelError(nameof(model.FechaHoraInicio), "Error de prueba");
 
         var result = await controller.Create(model);
@@ -133,7 +135,7 @@ public class CitasControllerTests
         var view = Assert.IsType<ViewResult>(result);
         var returnedModel = Assert.IsType<CitaFormViewModel>(view.Model);
         Assert.Equal("Paciente Ficticio", returnedModel.PacienteNombre);
-        Assert.Empty(returnedModel.Pacientes);
+        Assert.Equal(database.PatientId, returnedModel.PacienteId);
     }
 
     [Fact]

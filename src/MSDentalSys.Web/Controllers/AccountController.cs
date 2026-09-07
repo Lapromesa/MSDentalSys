@@ -66,7 +66,7 @@ namespace MSDentalSys.Web.Controllers
             }
 
             var result = await _signInManager.PasswordSignInAsync(
-                user, model.Password, model.RememberMe, lockoutOnFailure: false);
+                user, model.Password, model.RememberMe, lockoutOnFailure: true);
 
             if (result.Succeeded)
             {
@@ -81,7 +81,7 @@ namespace MSDentalSys.Web.Controllers
             ModelState.AddModelError(
                 string.Empty,
                 result.IsLockedOut
-                    ? "La cuenta está temporalmente bloqueada."
+                    ? "La cuenta está temporalmente bloqueada por varios intentos fallidos. Intenta nuevamente en un minuto."
                     : "El correo o la contraseña no son correctos.");
 
             return View(model);

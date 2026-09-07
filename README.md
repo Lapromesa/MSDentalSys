@@ -88,6 +88,7 @@ Cita
 - La activación y desactivación es lógica; el registro no se elimina físicamente.
 - Para pacientes de 18 años o más, la cédula es obligatoria.
 - Para pacientes menores de 18 años, la cédula es opcional.
+- La cédula contiene 11 dígitos y se guarda como `XXX-XXXXXXX-X`. Create/Edit agregan los guiones automáticamente; el servidor acepta también los 11 dígitos sin guiones, valida estructura y obligatoriedad por edad, normaliza y comprueba unicidad considerando ambas representaciones. Si no hay fecha de nacimiento, no se infiere mayoría de edad. No se verifica el dígito de control ni la existencia oficial.
 - Si un menor informa cédula, se aplican las validaciones de formato y unicidad.
 - Un paciente puede tener o no seguro médico; si tiene uno, debe seleccionarse un seguro válido del catálogo.
 - Los seguros inactivos no se utilizan para nuevas asociaciones.
@@ -146,9 +147,49 @@ dotnet user-secrets set "SeedAdmin:Password" "TU_CLAVE_SEGURA" --project .\src\M
 
 Algunos nombres de servidor posibles son `.\SQLEXPRESS`, `localhost` y `(localdb)\MSSQLLocalDB`; no todos funcionaran automaticamente. Cada integrante debe utilizar el nombre de instancia SQL Server que tenga instalado. Si una rama o copia del proyecto no contiene una conexion base, debe configurarse `ConnectionStrings:DefaultConnection` mediante User Secrets antes de ejecutar la aplicacion.
 
-`ApplicationDbContextFactory` se utiliza para operaciones de Entity Framework Core en tiempo de diseno y actualmente esta configurada para SQL Server local. Quienes utilicen otra instancia pueden necesitar revisar esa configuracion antes de ejecutar comandos de migracion. Las migraciones no forman parte de la instalacion normal.
+## Flujo de migraciones para el equipo
 
-La aplicación Web obtiene `ConnectionStrings:DefaultConnection` desde la configuración de ASP.NET Core, mientras que `ApplicationDbContextFactory` utiliza actualmente una cadena independiente para las operaciones de EF CLI. Si se utiliza otra instancia de SQL Server, también debe revisarse `ApplicationDbContextFactory` antes de ejecutar `dotnet ef migrations ...` o `dotnet ef database update`; esto no requiere modificar las entidades ni las migraciones existentes.
+Ejecuta estos comandos PowerShell desde la raíz de la solución. Se requiere un SDK compatible con `global.json` (9.0.316) y `dotnet-ef` 9. Comprueba la herramienta con `dotnet ef --version`; si falta, instala mediante `dotnet tool install --global dotnet-ef --version "9.0.*"`.
+
+Web y EF CLI utilizan `ConnectionStrings:DefaultConnection`. La fábrica carga, en prioridad creciente, `appsettings.json`, `appsettings.{Environment}.json`, User Secrets de Web en Development, variables de entorno y argumentos. La variable `ConnectionStrings__DefaultConnection` permite sobrescribir la conexión. No necesitas editar la fábrica para cambiar de instancia.
+
+El entorno procede de `--environment`, después `DOTNET_ENVIRONMENT`, después `ASPNETCORE_ENVIRONMENT`; por defecto es Production. EF CLI no depende de `launchSettings.json`: indica Development para cargar User Secrets. La fábrica busca el proyecto Web desde el directorio actual y las ubicaciones de ejecución/ensamblado, ascendiendo por el repositorio. Puedes indicar su carpeta mediante `--contentRoot RUTA_A_WEB` después de `--`. Este mecanismo requiere el proyecto fuente.
+
+### Recibir y aplicar migraciones
+
+Configura primero los User Secrets de conexión y `SeedAdmin:Password` con los comandos anteriores. Cada integrante conserva sus valores fuera de Git.
+
+```powershell
+git pull
+dotnet ef database update --project .\src\MSDentalSys.Data --startup-project .\src\MSDentalSys.Web --context ApplicationDbContext -- --environment Development
+dotnet run --project .\src\MSDentalSys.Web -- --environment Development
+```
+
+Aplicar migraciones existentes es necesario al preparar una base nueva y al recibir cambios de esquema. EF registra las aplicadas en `__EFMigrationsHistory`; no requiere una copia física de otra base. La aplicación no aplica migraciones automáticamente.
+
+Al iniciar Web se ejecutan los seeders de roles, administrador inicial y seguros, salvo en Testing. El esquema debe existir primero. `SeedAdmin:Password` se necesita para crear el administrador si todavía no existe; no cambia su contraseña si ya existe. La fábrica de EF CLI no ejecuta seeders.
+
+### Generar una migración
+
+Solo quien cambia el modelo genera una migración, después de integrar los cambios del equipo:
+
+```powershell
+dotnet ef migrations add NombreDescriptivoDelCambio --project .\src\MSDentalSys.Data --startup-project .\src\MSDentalSys.Web --context ApplicationDbContext --output-dir Migrations -- --environment Development
+```
+
+Revisa `Up()` y `Down()`, aplica la migración localmente con el comando anterior y verifica el resultado. Comparte en Git los cambios del modelo, el archivo de migración, su `.Designer.cs` y `ApplicationDbContextModelSnapshot.cs` juntos.
+
+- No generes otra migración para un cambio que ya llegó mediante Git.
+- No modifiques migraciones compartidas/aplicadas salvo una decisión consciente del equipo. Coordina cambios simultáneos y conflictos del snapshot.
+- Las migraciones representan tablas, columnas, relaciones e índices. Pacientes, citas, diagnósticos, tratamientos y otros datos operativos no se comparten mediante migraciones.
+- Los archivos físicos y respaldos SQL Server (`.mdf`, `.ldf`, `.ndf`, `.bak`) no se suben a Git.
+- Los seeders mantienen datos iniciales controlados; no copian los datos operativos de otro integrante.
+
+Para listar migraciones sin conectarse a SQL Server:
+
+```powershell
+dotnet ef migrations list --no-connect --project .\src\MSDentalSys.Data --startup-project .\src\MSDentalSys.Web --context ApplicationDbContext -- --environment Development
+```
 
 ## Ejecución
 
@@ -164,7 +205,7 @@ dotnet run --project .\src\MSDentalSys.Web\MSDentalSys.Web.csproj
 
 La solución cuenta con pruebas para los módulos administrativos y clínicos, Login/autenticación, autorización HTTP e infraestructura.
 
-Estado actual: **182 pruebas correctas**.
+Estado actual: **212 pruebas correctas**, incluidas las comprobaciones de la fábrica, del bloqueo de Identity y de cédula sin SQL Server real.
 
 Las pruebas de datos utilizan SQLite InMemory y no utilizan `MSDentalSysDB`. Las pruebas HTTP usan `WebApplicationFactory` en el entorno `Testing`, con una base SQLite aislada y un esquema de autenticación exclusivo para Tests.
 
@@ -173,6 +214,8 @@ dotnet test .\MSDentalSys.sln
 ```
 
 ## Seguridad
+
+ASP.NET Core Identity bloquea temporalmente la cuenta durante 60 segundos al alcanzar cinco intentos fallidos consecutivos de inicio de sesión. La política aplica a todos los usuarios internos (Administrador, Odontologo y Recepcionista) con `LockoutEnabled` habilitado. Un acceso correcto antes del límite reinicia el contador; durante el bloqueo se rechaza incluso la contraseña correcta. Las cuentas nuevas creadas mediante UserManager tienen el bloqueo habilitado; esta configuración no corrige cuentas históricas que lo tengan deshabilitado.
 
 - ASP.NET Core Identity gestiona usuarios y contraseñas.
 - La autorización se define mediante `[Authorize]` y roles.

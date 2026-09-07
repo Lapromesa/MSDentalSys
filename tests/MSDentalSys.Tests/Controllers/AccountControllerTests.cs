@@ -84,7 +84,7 @@ public class AccountControllerTests
     public async Task Login_ConUsuarioInactivo_RechazaAccesoYAgregaError()
     {
         await using var database = await TestDatabase.CreateAsync();
-        await database.CreateUserAsync("login.inactivo@example.test", false);
+        var user = await database.CreateUserAsync("login.inactivo@example.test", false);
         var controller = database.CreateController();
 
         var result = await controller.Login(new LoginViewModel
@@ -96,6 +96,7 @@ public class AccountControllerTests
 
         Assert.IsType<ViewResult>(result);
         Assert.Contains("inactiva", GetModelStateError(controller), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, await database.UserManager.GetAccessFailedCountAsync(user));
         Assert.DoesNotContain(TestCookieName, database.GetSetCookieText(), StringComparison.Ordinal);
     }
 
@@ -150,6 +151,104 @@ public class AccountControllerTests
         Assert.Contains(TestCookieName, database.GetSetCookieText(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Login_CuatroFallos_NoBloquea()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("cuatro@example.test");
+        await FallarAsync(database, user, 4);
+        Assert.Equal(4, await database.UserManager.GetAccessFailedCountAsync(user));
+        Assert.False(await database.UserManager.IsLockedOutAsync(user));
+    }
+
+    [Theory]
+    [InlineData("Administrador")]
+    [InlineData("Odontologo")]
+    [InlineData("Recepcionista")]
+    public async Task Login_QuintoFallo_BloqueaPorUnMinutoEnTodosLosRoles(string role)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("quinto@example.test");
+        var roleManager = database.RoleManager;
+        Assert.True((await roleManager.CreateAsync(new IdentityRole(role))).Succeeded);
+        Assert.True((await database.UserManager.AddToRoleAsync(user, role)).Succeeded);
+        Assert.True(await database.UserManager.GetLockoutEnabledAsync(user));
+        await FallarAsync(database, user, 4);
+        var before = DateTimeOffset.UtcNow;
+        await FallarAsync(database, user, 1);
+        var after = DateTimeOffset.UtcNow;
+        Assert.True(await database.UserManager.IsLockedOutAsync(user));
+        var end = await database.UserManager.GetLockoutEndDateAsync(user);
+        Assert.NotNull(end);
+        Assert.InRange(end.Value, before.AddSeconds(60), after.AddSeconds(60));
+        Assert.Equal(0, await database.UserManager.GetAccessFailedCountAsync(user));
+    }
+
+    [Fact]
+    public async Task Login_ConPasswordCorrectaDuranteBloqueo_RechazaAcceso()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("bloqueado@example.test");
+        await FallarAsync(database, user, 5);
+        var controller = database.CreateController();
+        var result = await controller.Login(new LoginViewModel { Email = user.Email!, Password = Password });
+        Assert.IsType<ViewResult>(result);
+        Assert.Equal("La cuenta está temporalmente bloqueada por varios intentos fallidos. Intenta nuevamente en un minuto.", GetModelStateError(controller));
+        Assert.DoesNotContain(TestCookieName, database.GetSetCookieText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Login_BloqueoExpirado_PermiteAcceso()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("expirado@example.test");
+        await FallarAsync(database, user, 5);
+        Assert.True((await database.UserManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(-1))).Succeeded);
+        var result = await database.CreateController().Login(new LoginViewModel { Email = user.Email!, Password = Password });
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Contains(TestCookieName, database.GetSetCookieText(), StringComparison.Ordinal);
+        Assert.False(await database.UserManager.IsLockedOutAsync(user));
+    }
+
+    [Fact]
+    public async Task Login_ExitoAntesDelLimite_ReiniciaContador()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("reinicio@example.test");
+        await FallarAsync(database, user, 3);
+        Assert.Equal(3, await database.UserManager.GetAccessFailedCountAsync(user));
+        var result = await database.CreateController().Login(new LoginViewModel { Email = user.Email!, Password = Password });
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(0, await database.UserManager.GetAccessFailedCountAsync(user));
+        await FallarAsync(database, user, 1);
+        Assert.Equal(1, await database.UserManager.GetAccessFailedCountAsync(user));
+    }
+
+    [Fact]
+    public async Task Login_IntentoDuranteBloqueo_NoProlongaPlazo()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var user = await database.CreateUserAsync("plazo@example.test");
+        await FallarAsync(database, user, 5);
+        var end = await database.UserManager.GetLockoutEndDateAsync(user);
+        await FallarAsync(database, user, 1);
+        Assert.Equal(end, await database.UserManager.GetLockoutEndDateAsync(user));
+        Assert.Equal(0, await database.UserManager.GetAccessFailedCountAsync(user));
+    }
+
+    private static async Task FallarAsync(TestDatabase database, ApplicationUser user, int attempts)
+    {
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            var result = await database.CreateController().Login(new LoginViewModel
+            {
+                Email = user.Email!, Password = "Incorrecta123!"
+            });
+            Assert.IsType<ViewResult>(result);
+            Assert.DoesNotContain(TestCookieName, database.GetSetCookieText(), StringComparison.Ordinal);
+        }
+    }
+
     private static string GetModelStateError(AccountController controller)
     {
         return string.Join(" ", controller.ModelState.Values
@@ -171,7 +270,8 @@ public class AccountControllerTests
         }
 
         public ApplicationDbContext Context { get; }
-        private UserManager<ApplicationUser> UserManager => _services.GetRequiredService<UserManager<ApplicationUser>>();
+        public UserManager<ApplicationUser> UserManager => _services.GetRequiredService<UserManager<ApplicationUser>>();
+        public RoleManager<IdentityRole> RoleManager => _services.GetRequiredService<RoleManager<IdentityRole>>();
 
         public static async Task<TestDatabase> CreateAsync()
         {
@@ -206,7 +306,11 @@ public class AccountControllerTests
                     identityOptions.Password.RequireLowercase = true;
                     identityOptions.Password.RequireNonAlphanumeric = true;
                     identityOptions.SignIn.RequireConfirmedAccount = false;
+                    identityOptions.Lockout.MaxFailedAccessAttempts = 5;
+                    identityOptions.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromSeconds(60);
+                    identityOptions.Lockout.AllowedForNewUsers = true;
                 })
+                .AddRoles<IdentityRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>()
                 .AddSignInManager()
                 ;
