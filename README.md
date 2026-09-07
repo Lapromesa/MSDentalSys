@@ -88,6 +88,7 @@ Cita
 - La activación y desactivación es lógica; el registro no se elimina físicamente.
 - Para pacientes de 18 años o más, la cédula es obligatoria.
 - Para pacientes menores de 18 años, la cédula es opcional.
+- La cédula contiene 11 dígitos y se guarda como `XXX-XXXXXXX-X`. Create/Edit agregan los guiones automáticamente; el servidor acepta también los 11 dígitos sin guiones, valida estructura y obligatoriedad por edad, normaliza y comprueba unicidad considerando ambas representaciones. Si no hay fecha de nacimiento, no se infiere mayoría de edad. No se verifica el dígito de control ni la existencia oficial.
 - Si un menor informa cédula, se aplican las validaciones de formato y unicidad.
 - Un paciente puede tener o no seguro médico; si tiene uno, debe seleccionarse un seguro válido del catálogo.
 - Los seguros inactivos no se utilizan para nuevas asociaciones.
@@ -204,7 +205,7 @@ dotnet run --project .\src\MSDentalSys.Web\MSDentalSys.Web.csproj
 
 La solución cuenta con pruebas para los módulos administrativos y clínicos, Login/autenticación, autorización HTTP e infraestructura.
 
-Estado actual: **196 pruebas correctas**, incluidas las comprobaciones de la fábrica y del bloqueo de Identity sin SQL Server real.
+Estado actual: **212 pruebas correctas**, incluidas las comprobaciones de la fábrica, del bloqueo de Identity y de cédula sin SQL Server real.
 
 Las pruebas de datos utilizan SQLite InMemory y no utilizan `MSDentalSysDB`. Las pruebas HTTP usan `WebApplicationFactory` en el entorno `Testing`, con una base SQLite aislada y un esquema de autenticación exclusivo para Tests.
 

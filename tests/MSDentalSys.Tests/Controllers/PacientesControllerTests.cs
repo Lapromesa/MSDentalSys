@@ -14,6 +14,104 @@ namespace MSDentalSys.Tests.Controllers;
 public class PacientesControllerTests
 {
     [Fact]
+    public async Task Create_Cumple18MananaSinCedula_EsValido()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var result = await database.CreateController().Create(new PacienteFormViewModel
+        {
+            Nombre = "Paciente", Apellido = "Prueba", FechaNacimiento = DateTime.Today.AddDays(1).AddYears(-18)
+        });
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Null((await database.Context.Pacientes.SingleAsync()).Cedula);
+    }
+
+    [Theory]
+    [InlineData("00112345678")]
+    [InlineData("001-1234567-8")]
+    public async Task Create_CedulaCompleta_Normaliza(string cedula)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var result = await database.CreateController().Create(new PacienteFormViewModel
+        {
+            Nombre = "Paciente", Apellido = "Prueba", FechaNacimiento = DateTime.Today.AddYears(-25), Cedula = cedula
+        });
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal("001-1234567-8", (await database.Context.Pacientes.SingleAsync()).Cedula);
+    }
+
+    [Theory]
+    [InlineData("001123", 25)]
+    [InlineData("001123456789", 25)]
+    [InlineData("ABC00112345678", 25)]
+    [InlineData("0011-234567-8", 25)]
+    [InlineData("001-123", 10)]
+    public async Task Create_CedulaInvalida_NoPersiste(string cedula, int age)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var controller = database.CreateController();
+        var result = await controller.Create(new PacienteFormViewModel
+        {
+            Nombre = "Paciente", Apellido = "Prueba", FechaNacimiento = DateTime.Today.AddYears(-age), Cedula = cedula
+        });
+        Assert.IsType<ViewResult>(result);
+        Assert.NotEmpty(controller.ModelState[nameof(PacienteFormViewModel.Cedula)]!.Errors);
+        Assert.Empty(await database.Context.Pacientes.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("001-1234567-8", "00112345678")]
+    [InlineData("00112345678", "001-1234567-8")]
+    public async Task Create_DuplicadoEquivalente_NoPersiste(string stored, string input)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        database.Context.Pacientes.Add(new Paciente { Nombre = "Existente", Apellido = "Prueba", Cedula = stored });
+        await database.Context.SaveChangesAsync();
+        var controller = database.CreateController();
+        Assert.IsType<ViewResult>(await controller.Create(new PacienteFormViewModel
+        {
+            Nombre = "Nuevo", Apellido = "Prueba", Cedula = input
+        }));
+        Assert.Contains("otro paciente", controller.ModelState["Cedula"]!.Errors[0].ErrorMessage);
+        Assert.Equal(1, await database.Context.Pacientes.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("001-1234567-8")]
+    [InlineData("00112345678")]
+    public async Task Edit_ConservaCedulaPropiaYNormaliza(string input)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var paciente = new Paciente { Nombre = "Paciente", Apellido = "Prueba", Cedula = "00112345678" };
+        database.Context.Pacientes.Add(paciente);
+        await database.Context.SaveChangesAsync();
+        Assert.IsType<RedirectToActionResult>(await database.CreateController().Edit(paciente.PacienteId, new PacienteFormViewModel
+        {
+            PacienteId = paciente.PacienteId, Nombre = "Paciente", Apellido = "Prueba", Cedula = input
+        }));
+        await database.Context.Entry(paciente).ReloadAsync();
+        Assert.Equal("001-1234567-8", paciente.Cedula);
+    }
+
+    [Theory]
+    [InlineData("001-1234567-8")]
+    [InlineData("00112345678")]
+    public async Task Edit_CedulaDeOtroPaciente_Rechaza(string stored)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var paciente = new Paciente { Nombre = "Paciente", Apellido = "Prueba" };
+        database.Context.Pacientes.AddRange(paciente, new Paciente { Nombre = "Otro", Apellido = "Prueba", Cedula = stored });
+        await database.Context.SaveChangesAsync();
+        var controller = database.CreateController();
+        Assert.IsType<ViewResult>(await controller.Edit(paciente.PacienteId, new PacienteFormViewModel
+        {
+            PacienteId = paciente.PacienteId, Nombre = "Paciente", Apellido = "Prueba", Cedula = "00112345678"
+        }));
+        Assert.Contains("otro paciente", controller.ModelState["Cedula"]!.Errors[0].ErrorMessage);
+        await database.Context.Entry(paciente).ReloadAsync();
+        Assert.Null(paciente.Cedula);
+    }
+
+    [Fact]
     public async Task Create_Get_CargaSoloSegurosActivos()
     {
         await using var database = await TestDatabase.CreateAsync();

@@ -16,7 +16,8 @@ El entorno `Testing` evita la ejecución de `RoleSeeder` y `AdminSeeder` de prod
 | Login/autenticación | 15 |
 | Configuración real de Identity | 1 |
 | Atención odontológica | 13 |
-| Pacientes | 26 |
+| Pacientes | 40 |
+| HTML de formulario de pacientes | 2 |
 | Citas | 33 |
 | Servicios | 7 |
 | Usuarios | 9 |
@@ -27,11 +28,13 @@ El entorno `Testing` evita la ejecución de `RoleSeeder` y `AdminSeeder` de prod
 | Integración HTTP/autorización | 24 |
 | Seguros y SeguroSeeder | 13 |
 | Configuración de ApplicationDbContextFactory | 5 |
-| **Total** | **196** |
+| **Total** | **212** |
 
 ## Cobertura por grupo
 
 - **Pacientes**: registro, cédula duplicada u opcional, seguros activos e históricos, embarazo condicionado y activación/desactivación.
+- **Cédula (incluida en Pacientes)**: 14 casos nuevos verifican cumpleaños 18 mañana sin cédula, dos formatos completos normalizados, cinco entradas inválidas (incluida una voluntaria de menor), dos duplicados equivalentes en Create, dos ediciones de la cédula propia y dos duplicados en Edit, incluyendo registros históricos sin guiones. Se mantienen los casos existentes de menores, adultos y cumpleaños 18 hoy. El servidor rechaza letras, exceso, entradas incompletas y guiones incorrectos antes de persistir.
+- **HTML de formulario de pacientes**: dos casos en `Integration/PacienteFormTests.cs` revisan Create/Edit mediante la Web real con SQLite en memoria: campo de texto, `inputmode="numeric"`, máximo visual 13, obligatoriedad no incondicional, elementos auxiliares y carga del script compartido. No ejecutan JavaScript. Este punto añade 16 casos: de 196 a 212.
 - **Citas**: creación, autocomplete de pacientes activos, conflictos de horario, reagendamiento y estados finales.
 - **Usuarios**: creación, roles, duplicidad de correo, cambio de rol y estados.
 - **Servicios**: creación, edición, activación/desactivación y búsquedas.
@@ -70,11 +73,22 @@ dotnet test .\MSDentalSys.sln
 Estado validado actualmente:
 
 ```text
-196 pruebas correctas
+212 pruebas correctas
 0 fallidas
 0 omitidas
 ```
 
 ## Alcance y limitaciones
+
+### Comprobación manual de cédula en Create y Edit
+
+Las pruebas manuales se realizaron correctamente en navegador, tanto en Create como en Edit. Se verificó:
+
+- Cédula opcional para menores y obligatoria para adultos; cambio dinámico de FechaNacimiento, incluido quien cumple 18 hoy y quien cumple 18 mañana.
+- Formato automático `00112345678` → `001-1234567-8`, escritura, borrado, edición en medio y pegado.
+- Rechazo de exceso de dígitos, entrada incompleta y adulto sin cédula.
+- Edit conservando la cédula propia y rechazo de cédula duplicada.
+
+El servidor sigue siendo autoritativo. No se modifican masivamente cédulas históricas; la consulta contempla valores con y sin guiones. No se valida dígito verificador ni existencia oficial.
 
 Las pruebas HTTP validan el pipeline de autenticación y autorización de rutas con `WebApplicationFactory`, incluyendo permisos por rol y acceso de usuarios anónimos. La autenticación se simula mediante claims controlados en el entorno `Testing`. No son pruebas de navegador y no utilizan Selenium, Playwright ni servicios externos. Tampoco constituyen pruebas de rendimiento ni cobertura total del sistema.
