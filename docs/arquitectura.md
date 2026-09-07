@@ -1,5 +1,23 @@
 # Arquitectura de MSDentalSys
 
+## Configuración y migraciones compartidas
+
+```text
+Web -> configuración -> ApplicationDbContext -> SQL Server
+EF CLI -> ApplicationDbContextFactory -> misma configuración DefaultConnection
+       -> ApplicationDbContext -> SQL Server
+```
+
+La fábrica de Data lee la configuración Web sin referencia Data -> Web. Busca el proyecto desde el directorio actual y las ubicaciones de ejecución/ensamblado, ascendiendo por la estructura del repositorio; admite `--contentRoot` para indicar la carpeta Web. Requiere el proyecto fuente y lee su `UserSecretsId` del `.csproj`, sin duplicarlo.
+
+El entorno procede de `--environment`, `DOTNET_ENVIRONMENT` o `ASPNETCORE_ENVIRONMENT`, en ese orden; por defecto es Production. La configuración se carga en prioridad creciente: JSON general, JSON del entorno, User Secrets de Web solo en Development, variables de entorno y argumentos. `ConnectionStrings__DefaultConnection` sobrescribe la conexión. Los comandos de desarrollo indican `-- --environment Development`.
+
+La fábrica solo configura el contexto y el ensamblado de migraciones Data: no abre conexiones, aplica migraciones ni ejecuta seeders. Web mantiene la configuración estándar de ASP.NET Core.
+
+Las migraciones versionadas representan la evolución del esquema. Cada base registra las aplicadas en `__EFMigrationsHistory`, mediante `MigrationId` y `ProductVersion`. El snapshot sirve de referencia para generar cambios del modelo, no como historial de una base local.
+
+Los seeders de roles, administrador y seguros se ejecutan al iniciar Web, salvo en Testing, después de preparar el esquema mediante EF CLI. Los datos operativos (pacientes, citas, diagnósticos y tratamientos) permanecen en cada base y no se distribuyen mediante migraciones. El procedimiento está en «Flujo de migraciones para el equipo» del README.
+
 ## Arquitectura general
 
 MSDentalSys utiliza una arquitectura MVC organizada en proyectos separados por responsabilidad. La aplicación web consume la capa de datos y el proyecto de pruebas consume la aplicación y, cuando necesita probar directamente persistencia o entidades, también la capa de datos.

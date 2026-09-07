@@ -25,7 +25,8 @@ El entorno `Testing` evita la ejecución de `RoleSeeder` y `AdminSeeder` de prod
 | Evoluciones clínicas | 12 |
 | Integración HTTP/autorización | 24 |
 | Seguros y SeguroSeeder | 13 |
-| **Total** | **182** |
+| Configuración de ApplicationDbContextFactory | 5 |
+| **Total** | **187** |
 
 ## Cobertura por grupo
 
@@ -42,6 +43,7 @@ El entorno `Testing` evita la ejecución de `RoleSeeder` y `AdminSeeder` de prod
 - **Integración HTTP/autorización**: autenticación requerida, redirecciones, permisos por rol, edición de pacientes y acceso permitido o rechazado.
 - **Seguros y SeguroSeeder**: catálogo administrativo, permisos, activación/desactivación, relación con pacientes, carga inicial idempotente y conservación de registros manuales.
 - **Infraestructura**: funcionamiento básico de xUnit.
+- **Configuración de ApplicationDbContextFactory**: cinco pruebas nuevas en `tests/MSDentalSys.Tests/Context/ApplicationDbContextFactoryTests.cs`. Validan la prioridad de los argumentos de conexión y que el contexto SQL Server mantiene la conexión cerrada, la lectura del archivo JSON del entorno, el rechazo claro de conexiones vacías o con espacios (dos casos) y el error ante un `contentRoot` inválido. No requieren SQL Server real. Con este grupo, la suite suma 187 pruebas.
 
 ## Base de datos y seguridad de las pruebas
 
@@ -63,7 +65,7 @@ dotnet test .\MSDentalSys.sln
 Estado validado actualmente:
 
 ```text
-182 pruebas correctas
+187 pruebas correctas
 0 fallidas
 0 omitidas
 ```
